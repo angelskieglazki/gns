@@ -8,7 +8,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/nielsAD/gns"
+	"github.com/angelskieglazki/gns"
 )
 
 func TestConfigValue(t *testing.T) {

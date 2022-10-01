@@ -1,3 +1,3 @@
-module github.com/nielsAD/gns
+module github.com/angelskieglazki/gns
 
-go 1.14
+go 1.19

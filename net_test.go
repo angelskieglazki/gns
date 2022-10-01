@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nielsAD/gns"
+	"github.com/angelskieglazki/gns"
 )
 
 func TestInterface(t *testing.T) {
