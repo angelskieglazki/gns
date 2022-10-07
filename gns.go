@@ -9,8 +9,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"log"
 	"net"
-	"sync/atomic"
+	"reflect"
 	"time"
 	"unsafe"
 )
@@ -27,6 +28,7 @@ import (
 
 	void goDebugOutputCallback(ESteamNetworkingSocketsDebugOutputType nType, char *pszMsg);
 	void goStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t *pInfo, intptr_t context);
+	void goCallGlobalStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t *pInfo);
 */
 import "C"
 
@@ -71,7 +73,8 @@ func (cb *StatusChangedCallbackInfo) Conn() Connection {
 
 // Info returns m_info
 func (cb *StatusChangedCallbackInfo) Info() *ConnectionInfo {
-	return C.StatusChangedCallbackInfo_GetInfo(cb)
+	info := C.StatusChangedCallbackInfo_GetInfo(cb)
+	return info
 }
 
 // OldState returns m_eOldState
@@ -131,7 +134,8 @@ type ConfigOption C.ESteamNetworkingConfigValue
 
 // ConfigOption constants
 const (
-	ConfigInvalid ConfigOption = C.k_ESteamNetworkingConfig_Invalid
+	Callback_ConnectionStatusChanged ConfigOption = C.k_ESteamNetworkingConfig_Callback_ConnectionStatusChanged
+	ConfigInvalid                    ConfigOption = C.k_ESteamNetworkingConfig_Invalid
 
 	// [global float, 0--100] Randomly discard N pct of packets instead of sending/recv
 	// This is a global option only, since it is applied at a low level
@@ -287,7 +291,11 @@ func NewConfigValue(opt ConfigOption, val interface{}) *ConfigValue {
 	case float64:
 		res.m_eDataType = (C.ESteamNetworkingConfigDataType)(ConfigTypeFloat)
 		*(*C.float)(unsafe.Pointer(&res.m_val)) = C.float(v)
+	case uintptr:
+		res.m_eDataType = (C.ESteamNetworkingConfigDataType)(ConfigTypeFunctionPtr)
+		*(*uintptr)(unsafe.Pointer(&res.m_val)) = v
 	default:
+		fmt.Println(reflect.TypeOf(v))
 		panic("gns: Unsupported ConfigValue type")
 	}
 
@@ -305,6 +313,8 @@ func (cfg *ConfigValue) Val() interface{} {
 		return cfg.Float()
 	case ConfigTypeString:
 		return cfg.String()
+	case ConfigTypeFunctionPtr:
+		return cfg.FunctionPtr()
 	default:
 		panic("gns: Unsupported ConfigValue type")
 	}
@@ -324,6 +334,10 @@ func (cfg *ConfigValue) Float() float32 { return float32(*(*C.float)(unsafe.Poin
 
 // Strings returns m_string
 func (cfg *ConfigValue) String() string { return C.GoString((*C.char)(unsafe.Pointer(&cfg.m_val))) }
+
+func (cfg *ConfigValue) FunctionPtr() uintptr {
+	return uintptr((uintptr)(unsafe.Pointer(&cfg.m_val)))
+}
 
 // ConfigMap convencience type
 type ConfigMap map[ConfigOption]interface{}
@@ -756,13 +770,13 @@ func (msg *Message) PeerIdentity() *Identity { return &msg.m_identityPeer }
 // fetching the user data associated with that connection, but for
 // the following subtle differences:
 //
-//  - This user data will match the connection's user data at the time
-//    is captured at the time the message is returned by the API.
-//    If you subsequently change the userdata on the connection,
-//    this won't be updated.
-//  - This is an inline call, so it's *much* faster.
-//  - You might have closed the connection, so fetching the user data
-//   would not be possible.
+//   - This user data will match the connection's user data at the time
+//     is captured at the time the message is returned by the API.
+//     If you subsequently change the userdata on the connection,
+//     this won't be updated.
+//   - This is an inline call, so it's *much* faster.
+//   - You might have closed the connection, so fetching the user data
+//     would not be possible.
 //
 // Not used when sending messages,
 func (msg *Message) UserData() int64 { return (int64)(msg.m_nConnUserData) }
@@ -1036,7 +1050,7 @@ func (info *ConnectionInfo) UserData() int64 { return (int64)(info.m_nUserData) 
 
 // ListenSocket returns m_hListenSocket
 //
-/// Handle to listen socket this was connected on, or k_HSteamListenSocket_Invalid if we initiated the connection
+// / Handle to listen socket this was connected on, or k_HSteamListenSocket_Invalid if we initiated the connection
 func (info *ConnectionInfo) ListenSocket() ListenSocket { return (ListenSocket)(info.m_hListenSocket) }
 
 // RemoteAddr returns m_addrRemote
@@ -1048,7 +1062,9 @@ func (info *ConnectionInfo) RemoteAddr() *IPAddr { return &info.m_addrRemote }
 // State returns m_eState
 //
 // High level state of the connection
-func (info *ConnectionInfo) State() ConnectionState { return (ConnectionState)(info.m_eState) }
+func (info *ConnectionInfo) State() ConnectionState {
+	return (ConnectionState)(info.m_eState)
+}
 
 // EndReason returns m_eEndReason
 //
@@ -1238,21 +1254,30 @@ func SetDebugOutputFunction(eDetailLevel DebugOutputType, logFun DebugOutputFunc
 
 var statusChangedCallback uint32
 
-// RunCallbacks is the interface to ISteamNetworkingSockets::RunCallbacks
-//
-// Invoke all callbacks queued for this interface.
-// On Steam, callbacks are dispatched via the ordinary Steamworks callbacks mechanism.
-// So if you have code that is also targeting Steam, you should call this at about the
-// same time you would call SteamAPI_RunCallbacks and SteamGameServer_RunCallbacks.
-func RunCallbacks(callback StatusChangedCallback) {
-	idx := atomic.AddUint32(&statusChangedCallback, 1) % uint32(len(statusChangedCallbacks))
-	if statusChangedCallbacks[idx] != nil {
-		panic("gns: Too many pending StatusChangedCallbacks")
+// RunCallbacks v1.2.0
+func RunCallbacks() {
+	C.SteamAPI_ISteamNetworkingSockets_RunCallbacks(globsock)
+}
+
+var _StatusChangedCallback_holder StatusChangedCallback = nil
+
+func SetGlobalCallbackStatusChanged(callback StatusChangedCallback) {
+	if _StatusChangedCallback_holder != nil {
+		log.Fatal("Dopuble init of status changed callback")
 	}
 
-	statusChangedCallbacks[idx] = callback
-	C.SteamAPI_ISteamNetworkingSockets_RunCallbacks(globutil)
-	statusChangedCallbacks[idx] = nil
+	_StatusChangedCallback_holder = callback
+
+	C.SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetConnectionStatusChanged(globutil, (C.FnSteamNetConnectionStatusChanged)(C.goCallGlobalStatusChangedCallback))
+}
+
+//export goCallGlobalStatusChangedCallback
+func goCallGlobalStatusChangedCallback(pinfo *StatusChangedCallbackInfo) {
+	if _StatusChangedCallback_holder == nil {
+		log.Fatal("Not initialized status changed callback")
+	}
+
+	_StatusChangedCallback_holder(pinfo)
 }
 
 func setConfigValue(opt ConfigOption, val interface{}, eScopeType C.ESteamNetworkingConfigScope, scopeObj C.intptr_t) bool {
@@ -1318,12 +1343,12 @@ func LocalIdentity() *Identity {
 //
 // Fetch current timestamp.  This timer has the following properties:
 //
-//  - Monotonicity is guaranteed.
-//  - The initial value will be at least 24*3600*30*1e6, i.e. about
-//    30 days worth of microseconds.  In this way, the timestamp value of
-//    0 will always be at least "30 days ago".  Also, negative numbers
-//    will never be returned.
-//  - Wraparound / overflow is not a practical concern.
+//   - Monotonicity is guaranteed.
+//   - The initial value will be at least 24*3600*30*1e6, i.e. about
+//     30 days worth of microseconds.  In this way, the timestamp value of
+//     0 will always be at least "30 days ago".  Also, negative numbers
+//     will never be returned.
+//   - Wraparound / overflow is not a practical concern.
 //
 // If you are running under the debugger and stop the process, the clock
 // might not advance the full wall clock time that has elapsed between
@@ -1489,8 +1514,8 @@ func CreateSocketPair(bUseNetworkLoopback bool, pIdentity1 *Identity, pIdentity2
 // returns!), so it MUST be fast and threadsafe.
 //
 // You MUST also fill in:
-//  - m_conn - the handle of the connection to send the message to
-//  - m_nFlags - bitmask of k_nSteamNetworkingSend_xxx flags.
+//   - m_conn - the handle of the connection to send the message to
+//   - m_nFlags - bitmask of k_nSteamNetworkingSend_xxx flags.
 //
 // All other fields are currently reserved and should not be modified.
 //
@@ -1608,9 +1633,9 @@ func (conn Connection) GetConfigValue(opt ConfigOption) interface{} {
 // SetUserData is the interface to ISteamNetworkingSockets::SetConnectionUserData
 //
 // Set connection user data.  the data is returned in the following places
-//  - You can query it using GetConnectionUserData.
-//  - The SteamNetworkingmessage_t structure.
-//  - The SteamNetConnectionInfo_t structure.  (Which is a member of SteamNetConnectionStatusChangedCallback_t.)
+//   - You can query it using GetConnectionUserData.
+//   - The SteamNetworkingmessage_t structure.
+//   - The SteamNetConnectionInfo_t structure.  (Which is a member of SteamNetConnectionStatusChangedCallback_t.)
 //
 // Returns false if the handle is invalid.
 func (conn Connection) SetUserData(nUserData int64) bool {
@@ -1679,14 +1704,14 @@ func (conn Connection) GetName() string {
 // message number assigned to the message, if sending was successful.
 //
 // Returns:
-//  - k_EResultInvalidParam: invalid connection handle, or the individual message is too big.
-//    (See k_cbMaxSteamNetworkingSocketsMessageSizeSend)
-//  - k_EResultInvalidState: connection is in an invalid state
-//  - k_EResultNoConnection: connection has ended
-//  - k_EResultIgnored: You used k_nSteamNetworkingSend_NoDelay, and the message was dropped because
-//    we were not ready to send it.
-//  - k_EResultLimitExceeded: there was already too much data queued to be sent.
-//    (See k_ESteamNetworkingConfig_SendBufferSize)
+//   - k_EResultInvalidParam: invalid connection handle, or the individual message is too big.
+//     (See k_cbMaxSteamNetworkingSocketsMessageSizeSend)
+//   - k_EResultInvalidState: connection is in an invalid state
+//   - k_EResultNoConnection: connection has ended
+//   - k_EResultIgnored: You used k_nSteamNetworkingSend_NoDelay, and the message was dropped because
+//     we were not ready to send it.
+//   - k_EResultLimitExceeded: there was already too much data queued to be sent.
+//     (See k_ESteamNetworkingConfig_SendBufferSize)
 func (conn Connection) SendMessage(pData []byte, nSendFlags SendFlags) (int64, Result) {
 	var p unsafe.Pointer
 	if len(pData) > 0 {
@@ -1790,7 +1815,8 @@ func (conn Connection) QuickConnectionStatus() *QuickConnectionStatus {
 // -1 failure (bad connection handle)
 // 0 OK, your buffer was filled in and '\0'-terminated
 // >0 Your buffer was either nullptr, or it was too small and the text got truncated.
-//    Try again with a buffer of at least N bytes.
+//
+//	Try again with a buffer of at least N bytes.
 func (conn Connection) DetailedConnectionStatus() string {
 	var buf [4096]C.char
 	res := C.SteamAPI_ISteamNetworkingSockets_GetDetailedConnectionStatus(globsock, (C.HSteamNetConnection)(conn), &buf[0], (C.int)(len(buf)))
