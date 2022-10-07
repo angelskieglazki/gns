@@ -241,6 +241,7 @@ func newConn(handle Connection) (*Conn, bool) {
 		handle: handle,
 		rchan:  make(chan *Message, 1024),
 		rtimer: newTimer(),
+		// linger: 5,
 	}
 	return c, true
 }
@@ -673,7 +674,7 @@ func (c *Conn) SetWriteDeadline(t time.Time) error {
 var pollgroup PollGroup
 var closewait []*Conn
 
-func statusChanged(cb *StatusChangedCallbackInfo) {
+func StatusChanged(cb *StatusChangedCallbackInfo) {
 	conn := cb.Conn()
 	info := cb.Info()
 	state := info.State()
@@ -787,7 +788,7 @@ var pollw sync.WaitGroup
 func poll() {
 	var m [1024]*Message
 	for atomic.LoadUint32(&pollv) != 0 {
-		RunCallbacks(statusChanged)
+		RunCallbacks()
 		n := pollgroup.ReceiveMessages(m[:])
 		if n == 0 {
 			closewaits()

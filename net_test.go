@@ -30,6 +30,7 @@ func TestPipe(t *testing.T) {
 	gns.SetDebugOutputFunction(gns.DebugOutputTypeEverything, func(typ gns.DebugOutputType, msg string) {
 		t.Log("[DEBUG]", typ, msg)
 	})
+	gns.SetGlobalCallbackStatusChanged(gns.StatusChanged)
 	defer gns.Kill()
 
 	c1, c2, err := gns.Pipe(false, nil, nil)
@@ -102,7 +103,10 @@ func TestPipe(t *testing.T) {
 	if _, err := c1.Read(b[:]); err != gns.ErrClosedConnection {
 		t.Fatal("Closed connection expected")
 	}
-	if _, err := c2.Read(b[:]); err != io.EOF {
+	if n, err := c2.Read(b[:]); err != io.EOF {
+		println(string(b[:n]))
+		println(n)
+		println(err.Error())
 		t.Fatal("EOF expected")
 	}
 	if err := c2.Close(); err != nil {
@@ -111,13 +115,19 @@ func TestPipe(t *testing.T) {
 }
 
 func TestListen(t *testing.T) {
+	//val := 10
+	// cb_sc := gns.StatusChanged
+	// cfg := nil
+	// gns.ConfigMap{
+	// 	gns.Callback_ConnectionStatusChanged: uintptr(unsafe.Pointer(&cb_sc)),
+	// }
 	gns.Init(nil)
 	gns.SetDebugOutputFunction(gns.DebugOutputTypeEverything, func(typ gns.DebugOutputType, msg string) {
 		t.Log("[DEBUG]", typ, msg)
 	})
 	defer gns.Kill()
 
-	l, err := gns.Listen(&net.UDPAddr{IP: net.IPv6loopback}, nil)
+	l, err := gns.Listen(&net.UDPAddr{IP: net.IPv6loopback}, nil) //cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +141,7 @@ func TestListen(t *testing.T) {
 
 	str := "Hello, world!"
 	go func() {
-		c, err := gns.Dial(addr.(*net.UDPAddr), nil)
+		c, err := gns.Dial(addr.(*net.UDPAddr), nil) //cfg)
 		if err != nil {
 			t.Log(err)
 			return
