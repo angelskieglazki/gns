@@ -1141,6 +1141,41 @@ typedef struct SteamNetConnectionStatusChangedCallback_t
 } SteamNetConnectionStatusChangedCallback_t;
 PRAGMA_PACK_POP
 
+/// A struct used to describe our readiness to use the relay network.
+/// To do this we first need to fetch the network configuration,
+/// which describes what POPs are available.
+struct SteamRelayNetworkStatus_t
+{
+	// enum { k_iCallback = k_iSteamNetworkingUtilsCallbacks + 1 };
+
+	/// Summary status.  When this is "current", initialization has
+	/// completed.  Anything else means you are not ready yet, or
+	/// there is a significant problem.
+	ESteamNetworkingAvailability m_eAvail;
+
+	/// Nonzero if latency measurement is in progress (or pending,
+	/// awaiting a prerequisite).
+	int m_bPingMeasurementInProgress;
+
+	/// Status obtaining the network config.  This is a prerequisite
+	/// for relay network access.
+	///
+	/// Failure to obtain the network config almost always indicates
+	/// a problem with the local internet connection.
+	ESteamNetworkingAvailability m_eAvailNetworkConfig;
+
+	/// Current ability to communicate with ANY relay.  Note that
+	/// the complete failure to communicate with any relays almost
+	/// always indicates a problem with the local Internet connection.
+	/// (However, just because you can reach a single relay doesn't
+	/// mean that the local connection is in perfect health.)
+	ESteamNetworkingAvailability m_eAvailAnyRelay;
+
+	/// Non-localized English language status.  For diagnostic/debugging
+	/// purposes only.
+	char m_debugMsg[ 256 ];
+};
+
 /// Detail level for diagnostic output callback.
 /// See ISteamNetworkingUtils::SetDebugOutputFunction
 typedef enum ESteamNetworkingSocketsDebugOutputType
@@ -1424,13 +1459,17 @@ extern void SteamAPI_ISteamNetworkingUtils_SetDebugOutputFunction( ISteamNetwork
 extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueInt32( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, int32_t val );
 extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueFloat( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, float val );
 extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueString( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, const char * val );
+extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValuePtr( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, void * val );
 extern bool SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueInt32( ISteamNetworkingUtils* self, HSteamNetConnection hConn, ESteamNetworkingConfigValue eValue, int32_t val );
 extern bool SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueFloat( ISteamNetworkingUtils* self, HSteamNetConnection hConn, ESteamNetworkingConfigValue eValue, float val );
 extern bool SteamAPI_ISteamNetworkingUtils_SetConnectionConfigValueString( ISteamNetworkingUtils* self, HSteamNetConnection hConn, ESteamNetworkingConfigValue eValue, const char * val );
 
 typedef void (*FnSteamNetConnectionStatusChanged)( SteamNetConnectionStatusChangedCallback_t * );
+typedef void (*FnSteamNetAuthenticationStatusChanged)( SteamNetAuthenticationStatus_t * );
+typedef void (*FnSteamRelayNetworkStatusChanged)(SteamRelayNetworkStatus_t *);
 extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetConnectionStatusChanged( ISteamNetworkingUtils* self, FnSteamNetConnectionStatusChanged fnCallback );
-
+extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamNetAuthenticationStatusChanged( ISteamNetworkingUtils* self, FnSteamNetAuthenticationStatusChanged fnCallback );
+extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalCallback_SteamRelayNetworkStatusChanged( ISteamNetworkingUtils* self, FnSteamRelayNetworkStatusChanged fnCallback );
 extern bool SteamAPI_ISteamNetworkingUtils_SetConfigValue( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, ESteamNetworkingConfigScope eScopeType, intptr_t scopeObj, ESteamNetworkingConfigDataType eDataType, const void * pArg );
 extern bool SteamAPI_ISteamNetworkingUtils_SetConfigValueStruct( ISteamNetworkingUtils* self, const SteamNetworkingConfigValue_t *opt, ESteamNetworkingConfigScope eScopeType, intptr_t scopeObj );
 extern ESteamNetworkingGetConfigValueResult SteamAPI_ISteamNetworkingUtils_GetConfigValue( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, ESteamNetworkingConfigScope eScopeType, intptr_t scopeObj, ESteamNetworkingConfigDataType * pOutDataType, void * pResult, size_t * cbResult );

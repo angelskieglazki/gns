@@ -194,10 +194,10 @@ func Example() {
 	}
 	defer l.Close()
 
-	// gns.SetGlobalConfigValue(gns.ConfigFakePacketLagRecv, 10.0)
-	// gns.SetGlobalConfigValue(gns.ConfigFakePacketLagSend, 10.0)
-	// gns.SetGlobalConfigValue(gns.ConfigFakePacketLossRecv, 5.0)
-	// gns.SetGlobalConfigValue(gns.ConfigFakePacketLossSend, 5.0)
+	gns.SetGlobalConfigValue(gns.ConfigFakePacketLagRecv, 10.0)
+	gns.SetGlobalConfigValue(gns.ConfigFakePacketLagSend, 10.0)
+	gns.SetGlobalConfigValue(gns.ConfigFakePacketLossRecv, 5.0)
+	gns.SetGlobalConfigValue(gns.ConfigFakePacketLossSend, 5.0)
 
 	// send a burst of 2MiB random bytes with 20ms lag and ~10% packet loss
 	var in [2 * 1024 * 1024]byte
