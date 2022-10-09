@@ -1144,7 +1144,7 @@ PRAGMA_PACK_POP
 /// A struct used to describe our readiness to use the relay network.
 /// To do this we first need to fetch the network configuration,
 /// which describes what POPs are available.
-struct SteamRelayNetworkStatus_t
+typedef struct SteamRelayNetworkStatus_t
 {
 	// enum { k_iCallback = k_iSteamNetworkingUtilsCallbacks + 1 };
 
@@ -1174,7 +1174,7 @@ struct SteamRelayNetworkStatus_t
 	/// Non-localized English language status.  For diagnostic/debugging
 	/// purposes only.
 	char m_debugMsg[ 256 ];
-};
+}SteamRelayNetworkStatus_t;
 
 /// Detail level for diagnostic output callback.
 /// See ISteamNetworkingUtils::SetDebugOutputFunction
