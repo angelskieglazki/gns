@@ -10,9 +10,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#ifndef STEAMNETWORKINGSOCKETS_OPENSOURCE
-#define STEAMNETWORKINGSOCKETS_OPENSOURCE
-#endif
+// #ifndef STEAMNETWORKINGSOCKETS_OPENSOURCE
+// #define STEAMNETWORKINGSOCKETS_OPENSOURCE
+// #endif
 
 #ifdef STEAMNETWORKINGSOCKETS_OPENSOURCE
 #define PRAGMA_PACK_PUSH _Pragma("pack(push,8)")
@@ -1414,6 +1414,28 @@ typedef struct SteamNetworkingMessage_t
 	int64_t m_nUserData;
 } SteamNetworkingMessage_t;
 
+//
+// Ping location / measurement
+//
+
+/// Object that describes a "location" on the Internet with sufficient
+/// detail that we can reasonably estimate an upper bound on the ping between
+/// the two hosts, even if a direct route between the hosts is not possible,
+/// and the connection must be routed through the Steam Datagram Relay network.
+/// This does not contain any information that identifies the host.  Indeed,
+/// if two hosts are in the same building or otherwise have nearly identical
+/// networking characteristics, then it's valid to use the same location
+/// object for both of them.
+///
+/// NOTE: This object should only be used in the same process!  Do not serialize it,
+/// send it over the wire, or persist it in a file or database!  If you need
+/// to do that, convert it to a string representation using the methods in
+/// ISteamNetworkingUtils().
+typedef struct SteamNetworkPingLocation_t
+{
+	uint8_t m_data[ 512 ];
+}SteamNetworkPingLocation_t;
+
 // GameNetworkingSockets
 extern bool GameNetworkingSockets_Init( const SteamNetworkingIdentity *pIdentity, SteamNetworkingErrMsg *errMsg );
 extern void GameNetworkingSockets_Kill();
@@ -1422,6 +1444,8 @@ extern void GameNetworkingSockets_Kill();
 extern ISteamNetworkingSockets *SteamAPI_SteamNetworkingSockets_v009();
 extern HSteamListenSocket SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP( ISteamNetworkingSockets* self, const SteamNetworkingIPAddr *localAddress, int nOptions, const SteamNetworkingConfigValue_t * pOptions );
 extern HSteamNetConnection SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress( ISteamNetworkingSockets* self, const SteamNetworkingIPAddr *address, int nOptions, const SteamNetworkingConfigValue_t * pOptions );
+extern HSteamListenSocket SteamAPI_ISteamNetworkingSockets_CreateListenSocketP2P( ISteamNetworkingSockets* self, int nLocalVirtualPort, int nOptions, const SteamNetworkingConfigValue_t * pOptions );
+extern HSteamNetConnection SteamAPI_ISteamNetworkingSockets_ConnectP2P( ISteamNetworkingSockets* self, const SteamNetworkingIdentity  *identityRemote, int nRemoteVirtualPort, int nOptions, const SteamNetworkingConfigValue_t * pOptions );
 extern EResult SteamAPI_ISteamNetworkingSockets_AcceptConnection( ISteamNetworkingSockets* self, HSteamNetConnection hConn );
 extern bool SteamAPI_ISteamNetworkingSockets_CloseConnection( ISteamNetworkingSockets* self, HSteamNetConnection hPeer, int nReason, const char * pszDebug, bool bEnableLinger );
 extern bool SteamAPI_ISteamNetworkingSockets_CloseListenSocket( ISteamNetworkingSockets* self, HSteamListenSocket hSocket );
@@ -1454,6 +1478,18 @@ extern void SteamAPI_ISteamNetworkingSockets_RunCallbacks( ISteamNetworkingSocke
 // ISteamNetworkingUtils
 extern ISteamNetworkingUtils *SteamAPI_SteamNetworkingUtils_v003();
 extern SteamNetworkingMessage_t * SteamAPI_ISteamNetworkingUtils_AllocateMessage( ISteamNetworkingUtils* self, int cbAllocateBuffer );
+extern void SteamAPI_ISteamNetworkingUtils_InitRelayNetworkAccess( ISteamNetworkingUtils* self );
+extern ESteamNetworkingAvailability SteamAPI_ISteamNetworkingUtils_GetRelayNetworkStatus( ISteamNetworkingUtils* self, SteamRelayNetworkStatus_t * pDetails );
+extern float SteamAPI_ISteamNetworkingUtils_GetLocalPingLocation( ISteamNetworkingUtils* self, SteamNetworkPingLocation_t *result );
+extern int SteamAPI_ISteamNetworkingUtils_EstimatePingTimeBetweenTwoLocations( ISteamNetworkingUtils* self, const SteamNetworkPingLocation_t *location1, const SteamNetworkPingLocation_t *location2 );
+extern int SteamAPI_ISteamNetworkingUtils_EstimatePingTimeFromLocalHost( ISteamNetworkingUtils* self, const SteamNetworkPingLocation_t *remoteLocation );
+extern void SteamAPI_ISteamNetworkingUtils_ConvertPingLocationToString( ISteamNetworkingUtils* self, const SteamNetworkPingLocation_t *location, char * pszBuf, int cchBufSize );
+extern bool SteamAPI_ISteamNetworkingUtils_ParsePingLocationString( ISteamNetworkingUtils* self, const char * pszString, SteamNetworkPingLocation_t *result );
+extern bool SteamAPI_ISteamNetworkingUtils_CheckPingDataUpToDate( ISteamNetworkingUtils* self, float flMaxAgeSeconds );
+extern int SteamAPI_ISteamNetworkingUtils_GetPingToDataCenter( ISteamNetworkingUtils* self, SteamNetworkingPOPID popID, SteamNetworkingPOPID * pViaRelayPoP );
+extern int SteamAPI_ISteamNetworkingUtils_GetDirectPingToPOP( ISteamNetworkingUtils* self, SteamNetworkingPOPID popID );
+extern int SteamAPI_ISteamNetworkingUtils_GetPOPCount( ISteamNetworkingUtils* self );
+extern int SteamAPI_ISteamNetworkingUtils_GetPOPList( ISteamNetworkingUtils* self, SteamNetworkingPOPID * list, int nListSz );
 extern SteamNetworkingMicroseconds SteamAPI_ISteamNetworkingUtils_GetLocalTimestamp( ISteamNetworkingUtils* self );
 extern void SteamAPI_ISteamNetworkingUtils_SetDebugOutputFunction( ISteamNetworkingUtils* self, ESteamNetworkingSocketsDebugOutputType eDetailLevel, FSteamNetworkingSocketsDebugOutput pfnFunc );
 extern bool SteamAPI_ISteamNetworkingUtils_SetGlobalConfigValueInt32( ISteamNetworkingUtils* self, ESteamNetworkingConfigValue eValue, int32_t val );

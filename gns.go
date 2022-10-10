@@ -73,6 +73,7 @@ func (cb *StatusChangedCallbackInfo) Conn() Connection {
 
 // Info returns m_info
 func (cb *StatusChangedCallbackInfo) Info() *ConnectionInfo {
+	// fmt.Printf("GO. Info() cb = %v\n", unsafe.Pointer(cb))
 	info := C.StatusChangedCallbackInfo_GetInfo(cb)
 	return info
 }
