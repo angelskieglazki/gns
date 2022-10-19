@@ -1130,6 +1130,7 @@ typedef char SteamNetworkingErrMsg[ k_cchMaxSteamNetworkingErrMsg ];
 PRAGMA_PACK_PUSH
 typedef struct SteamNetConnectionStatusChangedCallback_t
 { 
+	enum { k_iCallback = k_iSteamNetworkingSocketsCallbacks + 1 };
 	/// Connection handle
 	HSteamNetConnection m_hConn;
 
