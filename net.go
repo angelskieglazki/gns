@@ -537,6 +537,7 @@ func (c *Conn) Close() error {
 	c.mut.Unlock()
 	c.rmut.Lock()
 	c.mut.Lock()
+
 	if c.rmsg != nil {
 		c.rmsg.Release()
 	}
@@ -547,7 +548,7 @@ func (c *Conn) Close() error {
 		}
 		msg.Release()
 	}
-	c.rmut.Unlock()
+  c.rmut.Unlock()
 
 	return nil
 }
