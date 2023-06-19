@@ -494,9 +494,6 @@ func (c *Conn) SendMessage(b []byte, flags SendFlags) (int, error) {
 // Close closes the connection.
 // Any blocked Read or Write operations will be unblocked and return errors.
 func (c *Conn) Close() error {
-	c.rmut.Lock()
-	defer c.rmut.Unlock()
-
 	c.mut.Lock()
 	defer c.mut.Unlock()
 
@@ -537,6 +534,9 @@ func (c *Conn) Close() error {
 
 	c.handle = InvalidConnection
 
+	c.mut.Unlock() // for right ordering mutex locks
+	c.rmut.Lock()
+	c.mut.Lock()
 	if c.rmsg != nil {
 		c.rmsg.Release()
 	}
@@ -547,6 +547,7 @@ func (c *Conn) Close() error {
 		}
 		msg.Release()
 	}
+	c.rmut.Unlock()
 
 	return nil
 }
