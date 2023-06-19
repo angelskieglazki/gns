@@ -534,7 +534,9 @@ func (c *Conn) Close() error {
 
 	c.handle = InvalidConnection
 
+	c.mut.Unlock()
 	c.rmut.Lock()
+	c.mut.Lock()
 	if c.rmsg != nil {
 		c.rmsg.Release()
 	}
