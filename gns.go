@@ -1801,7 +1801,7 @@ func (conn Connection) Info() *ConnectionInfo {
 // Returns false if the connection handle is invalid, or the connection has ended.
 func (conn Connection) QuickConnectionStatus() *QuickConnectionStatus {
 	var buf quickConnectionStatus
-	if C.SteamAPI_ISteamNetworkingSockets_GetQuickConnectionStatus(globsock, (C.HSteamNetConnection)(conn), &buf) {
+	if C.SteamAPI_ISteamNetworkingSockets_GetConnectionRealTimeStatus(globsock, (C.HSteamNetConnection)(conn), &buf, 0, 0) {
 		return buf.unpack()
 	}
 	return nil
