@@ -64,7 +64,7 @@ func goDebugOutputCallback(nType C.ESteamNetworkingSocketsDebugOutputType, pszMs
 }
 
 // StatusChangedCallbackInfo is the interface to SteamNetConnectionStatusChangedCallback_t
-type StatusChangedCallbackInfo = C.SteamNetConnectionStatusChangedCallback_t
+type StatusChangedCallbackInfo C.SteamNetConnectionStatusChangedCallback_t
 
 // Conn returns m_hConn
 func (cb *StatusChangedCallbackInfo) Conn() Connection {
@@ -73,9 +73,11 @@ func (cb *StatusChangedCallbackInfo) Conn() Connection {
 
 // Info returns m_info
 func (cb *StatusChangedCallbackInfo) Info() *ConnectionInfo {
-	// fmt.Printf("GO. Info() cb = %v\n", unsafe.Pointer(cb))
-	info := C.StatusChangedCallbackInfo_GetInfo(cb)
-	return info
+	// Convert our Go-defined type to the C struct pointer before calling C helper.
+	ccb := (*C.SteamNetConnectionStatusChangedCallback_t)(unsafe.Pointer(cb))
+	info := C.StatusChangedCallbackInfo_GetInfo(ccb)
+	// Convert C pointer back to our Go-defined type.
+	return (*ConnectionInfo)(unsafe.Pointer(info))
 }
 
 // OldState returns m_eOldState
@@ -90,8 +92,8 @@ type StatusChangedCallback func(info *StatusChangedCallbackInfo)
 var statusChangedCallbacks [256]StatusChangedCallback
 
 //export goStatusChangedCallback
-func goStatusChangedCallback(pInfo *StatusChangedCallbackInfo, context C.intptr_t) {
-	statusChangedCallbacks[(int)(context)](pInfo)
+func goStatusChangedCallback(pInfo *C.SteamNetConnectionStatusChangedCallback_t, context C.intptr_t) {
+	statusChangedCallbacks[int(context)]((*StatusChangedCallbackInfo)(unsafe.Pointer(pInfo)))
 }
 
 // ListenSocket is the interface to HSteamListenSocket
@@ -269,7 +271,7 @@ const (
 // when the object is created, we just iterate over the list of options and call
 // ISteamNetworkingUtils::SetConfigValueStruct, where the scope arguments are supplied by the
 // object being created.
-type ConfigValue = C.SteamNetworkingConfigValue_t
+type ConfigValue C.SteamNetworkingConfigValue_t
 
 // NewConfigValue maps interface{} to ConfigValue
 func NewConfigValue(opt ConfigOption, val interface{}) *ConfigValue {
@@ -539,7 +541,7 @@ const (
 // used on the wire in several places, even though it is less efficient, in order to
 // facilitate forward compatibility.  (Old client code can handle an identity type that
 // it doesn't understand.)
-type Identity = C.SteamNetworkingIdentity
+type Identity C.SteamNetworkingIdentity
 
 // ParseIdentity is the interface to SteamNetworkingIdentity::ParseString
 //
@@ -553,7 +555,11 @@ func ParseIdentity(id string) *Identity {
 	defer C.free(unsafe.Pointer(str))
 
 	var res Identity
-	if C.SteamAPI_SteamNetworkingIdentity_ParseString(&res, (C.size_t)(unsafe.Sizeof(res)), str) {
+	if C.SteamAPI_SteamNetworkingIdentity_ParseString(
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(&res)),
+		(C.size_t)(unsafe.Sizeof(res)),
+		str,
+	) {
 		return &res
 	}
 
@@ -564,14 +570,19 @@ func ParseIdentity(id string) *Identity {
 //
 // Return false if we are the invalid type.  Does not make any other validity checks (e.g. is SteamID actually valid)
 func (id *Identity) Valid() bool {
-	return id != nil && !(bool)(C.SteamAPI_SteamNetworkingIdentity_IsInvalid(id))
+	return id != nil && !(bool)(C.SteamAPI_SteamNetworkingIdentity_IsInvalid(
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(id)),
+	))
 }
 
 // Equals is the interface to SteamNetworkingIdentity::IsEqualTo
 //
 // See if two identities are identical.
 func (id *Identity) Equals(other *Identity) bool {
-	return (bool)(C.SteamAPI_SteamNetworkingIdentity_IsEqualTo(id, other))
+	return (bool)(C.SteamAPI_SteamNetworkingIdentity_IsEqualTo(
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(id)),
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(other)),
+	))
 }
 
 // Valid is the interface to SteamNetworkingIdentity::ToString
@@ -582,7 +593,11 @@ func (id *Identity) Equals(other *Identity) bool {
 // k_cchMaxString bytes big to avoid truncation.
 func (id *Identity) String() string {
 	var buf [C.k_cchSteamNetworkingIdentityMaxString]C.char
-	C.SteamAPI_SteamNetworkingIdentity_ToString(id, &buf[0], (C.size_t)(len(buf)))
+	C.SteamAPI_SteamNetworkingIdentity_ToString(
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(id)),
+		&buf[0],
+		(C.size_t)(len(buf)),
+	)
 	return C.GoString(&buf[0])
 }
 
@@ -594,20 +609,28 @@ func (id *Identity) Type() IdentityType { return (IdentityType)(id.m_eType) }
 // Store an IP and port.  IPv6 is always used; IPv4 is represented using
 // "IPv4-mapped" addresses: IPv4 aa.bb.cc.dd => IPv6 ::ffff:aabb:ccdd
 // (RFC 4291 section 2.5.5.2.)
-type IPAddr = C.SteamNetworkingIPAddr
+type IPAddr C.SteamNetworkingIPAddr
 
 // NewIPAddr maps net.UDPAddr to IPAddr
 func NewIPAddr(addr *net.UDPAddr) *IPAddr {
 	port := (C.uint16_t)(addr.Port)
 
 	var res IPAddr
-	C.SteamAPI_SteamNetworkingIPAddr_Clear(&res)
+	C.SteamAPI_SteamNetworkingIPAddr_Clear((*C.SteamNetworkingIPAddr)(unsafe.Pointer(&res)))
 	if ip4 := addr.IP.To4(); ip4 != nil {
-		C.SteamAPI_SteamNetworkingIPAddr_SetIPv4(&res, (C.uint32_t)(binary.BigEndian.Uint32(ip4)), port)
+		C.SteamAPI_SteamNetworkingIPAddr_SetIPv4(
+			(*C.SteamNetworkingIPAddr)(unsafe.Pointer(&res)),
+			(C.uint32_t)(binary.BigEndian.Uint32(ip4)),
+			port,
+		)
 	} else if ip16 := addr.IP.To16(); ip16 != nil {
-		C.SteamAPI_SteamNetworkingIPAddr_SetIPv6(&res, (*C.uint8_t)(&ip16[0]), port)
+		C.SteamAPI_SteamNetworkingIPAddr_SetIPv6(
+			(*C.SteamNetworkingIPAddr)(unsafe.Pointer(&res)),
+			(*C.uint8_t)(&ip16[0]),
+			port,
+		)
 	} else {
-		C.SteamAPI_SteamNetworkingIPAddr_Clear(&res)
+		C.SteamAPI_SteamNetworkingIPAddr_Clear((*C.SteamNetworkingIPAddr)(unsafe.Pointer(&res)))
 	}
 
 	return &res
@@ -728,14 +751,16 @@ const (
 // Message is the interface to SteamNetworkingMessage_t
 //
 // A message that has been received.
-type Message = C.SteamNetworkingMessage_t
+type Message C.SteamNetworkingMessage_t
 
 // Release is the interface to SteamNetworkingMessage_t::Release
 //
 // You MUST call this when you're done with the object,
 // to free up memory, etc.
 func (msg *Message) Release() {
-	C.SteamAPI_SteamNetworkingMessage_t_Release(msg)
+	C.SteamAPI_SteamNetworkingMessage_t_Release(
+		(*C.SteamNetworkingMessage_t)(unsafe.Pointer(msg)),
+	)
 }
 
 // Payload returns m_pData
@@ -760,7 +785,9 @@ func (msg *Message) Conn() Connection { return (Connection)(msg.m_conn) }
 // For messages received on connections: what connection did this come from?
 // For outgoing messages: what connection to send it to?
 // Not used when using the ISteamNetworkingMessages interface
-func (msg *Message) PeerIdentity() *Identity { return &msg.m_identityPeer }
+func (msg *Message) PeerIdentity() *Identity {
+	return (*Identity)(unsafe.Pointer(&msg.m_identityPeer))
+}
 
 // UserData returns m_m_nConnUserDataconn
 //
@@ -1037,12 +1064,14 @@ const (
 // ConnectionInfo is the interface to SteamNetConnectionInfo_t
 //
 // Describe the state of a connection.
-type ConnectionInfo = C.SteamNetConnectionInfo_t
+type ConnectionInfo C.SteamNetConnectionInfo_t
 
 // RemoteIdentity returns m_identityRemote
 //
 // Who is on the other end?  Depending on the connection type and phase of the connection, we might not know
-func (info *ConnectionInfo) RemoteIdentity() *Identity { return &info.m_identityRemote }
+func (info *ConnectionInfo) RemoteIdentity() *Identity {
+	return (*Identity)(unsafe.Pointer(&info.m_identityRemote))
+}
 
 // UserData returns m_nUserData
 //
@@ -1058,7 +1087,9 @@ func (info *ConnectionInfo) ListenSocket() ListenSocket { return (ListenSocket)(
 //
 // Remote address.  Might be all 0's if we don't know it, or if this is N/A.
 // (E.g. Basically everything except direct UDP connection.)
-func (info *ConnectionInfo) RemoteAddr() *IPAddr { return &info.m_addrRemote }
+func (info *ConnectionInfo) RemoteAddr() *IPAddr {
+	return (*IPAddr)(unsafe.Pointer(&info.m_addrRemote))
+}
 
 // State returns m_eState
 //
@@ -1093,7 +1124,7 @@ func (info *ConnectionInfo) Description() string {
 	return C.GoString(&info.m_szConnectionDescription[0])
 }
 
-type quickConnectionStatus = C.SteamNetConnectionRealTimeStatus_t
+type quickConnectionStatus C.SteamNetConnectionRealTimeStatus_t
 
 func (s *quickConnectionStatus) unpack() *QuickConnectionStatus {
 	return &QuickConnectionStatus{
@@ -1199,7 +1230,10 @@ func InitLibrary(id *Identity) error {
 	}
 
 	var err C.SteamNetworkingErrMsg
-	if C.GameNetworkingSockets_Init(id, &err) {
+	if C.GameNetworkingSockets_Init(
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(id)),
+		&err,
+	) {
 		globsock = unsafe.Pointer(C.SteamAPI_SteamNetworkingSockets_v009())
 		globutil = unsafe.Pointer(C.SteamAPI_SteamNetworkingUtils_v003())
 		if globsock == nil || globutil == nil {
@@ -1273,17 +1307,25 @@ func SetGlobalCallbackStatusChanged(callback StatusChangedCallback) {
 }
 
 //export goCallGlobalStatusChangedCallback
-func goCallGlobalStatusChangedCallback(pinfo *StatusChangedCallbackInfo) {
+func goCallGlobalStatusChangedCallback(pinfo *C.SteamNetConnectionStatusChangedCallback_t) {
+	if _StatusChangedCallback_holder == nil {
+		log.Fatal("Not initialized status changed callback")
+	}
 	if _StatusChangedCallback_holder == nil {
 		log.Fatal("Not initialized status changed callback")
 	}
 
-	_StatusChangedCallback_holder(pinfo)
+	_StatusChangedCallback_holder((*StatusChangedCallbackInfo)(unsafe.Pointer(pinfo)))
 }
 
 func setConfigValue(opt ConfigOption, val interface{}, eScopeType C.ESteamNetworkingConfigScope, scopeObj C.intptr_t) bool {
 	cfg := NewConfigValue(opt, val)
-	res := C.SteamAPI_ISteamNetworkingUtils_SetConfigValueStruct(globutil, cfg, eScopeType, scopeObj)
+	res := C.SteamAPI_ISteamNetworkingUtils_SetConfigValueStruct(
+		globutil,
+		(*C.SteamNetworkingConfigValue_t)(unsafe.Pointer(cfg)),
+		eScopeType,
+		scopeObj,
+	)
 	return (bool)(res)
 }
 
@@ -1327,7 +1369,10 @@ func GetInterfaceConfigValue(opt ConfigOption) interface{} {
 // our identity yet.  (E.g. GameServer has not logged in.  On Steam, the user will know their SteamID
 // even if they are not signed into Steam.)
 func GetIdentity(buf *Identity) bool {
-	res := C.SteamAPI_ISteamNetworkingSockets_GetIdentity(globsock, buf)
+	res := C.SteamAPI_ISteamNetworkingSockets_GetIdentity(
+		globsock,
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(buf)),
+	)
 	return (bool)(res)
 }
 
@@ -1391,7 +1436,12 @@ func CreateListenSocketIP(localAddress *IPAddr, config ConfigMap) ListenSocket {
 	if len(cfg) > 0 {
 		ptr = &cfg[0]
 	}
-	res := C.SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP(globsock, localAddress, (C.int)(len(cfg)), ptr)
+	res := C.SteamAPI_ISteamNetworkingSockets_CreateListenSocketIP(
+		globsock,
+		(*C.SteamNetworkingIPAddr)(unsafe.Pointer(localAddress)),
+		(C.int)(len(cfg)),
+		ptr,
+	)
 	return (ListenSocket)(res)
 }
 
@@ -1421,7 +1471,10 @@ func (sock ListenSocket) GetConfigValue(opt ConfigOption) interface{} {
 // An IPv6 address of ::0 means "any IPv4 or IPv6"
 // An IPv6 address of ::ffff:0000:0000 means "any IPv4"
 func (sock ListenSocket) GetListenAddr(buf *IPAddr) bool {
-	res := C.SteamAPI_ISteamNetworkingSockets_GetListenSocketAddress(globsock, (C.HSteamListenSocket)(sock), buf)
+	res := C.SteamAPI_ISteamNetworkingSockets_GetListenSocketAddress(
+		globsock, (C.HSteamListenSocket)(sock),
+		(*C.SteamNetworkingIPAddr)(unsafe.Pointer(buf)),
+	)
 	return (bool)(res)
 }
 
@@ -1464,7 +1517,12 @@ func ConnectByIPAddress(address *IPAddr, config ConfigMap) Connection {
 	if len(cfg) > 0 {
 		ptr = &cfg[0]
 	}
-	res := C.SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress(globsock, address, (C.int)(len(cfg)), ptr)
+	res := C.SteamAPI_ISteamNetworkingSockets_ConnectByIPAddress(
+		globsock,
+		(*C.SteamNetworkingIPAddr)(unsafe.Pointer(address)),
+		(C.int)(len(cfg)),
+		ptr,
+	)
 	return (Connection)(res)
 }
 
@@ -1493,7 +1551,11 @@ func ConnectByIPAddress(address *IPAddr, config ConfigMap) Connection {
 func CreateSocketPair(bUseNetworkLoopback bool, pIdentity1 *Identity, pIdentity2 *Identity) (Connection, Connection) {
 	var conn1 C.HSteamNetConnection
 	var conn2 C.HSteamNetConnection
-	C.SteamAPI_ISteamNetworkingSockets_CreateSocketPair(globsock, &conn1, &conn2, (C.bool)(bUseNetworkLoopback), pIdentity1, pIdentity2)
+	C.SteamAPI_ISteamNetworkingSockets_CreateSocketPair(
+		globsock, &conn1, &conn2, (C.bool)(bUseNetworkLoopback),
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(pIdentity1)),
+		(*C.SteamNetworkingIdentity)(unsafe.Pointer(pIdentity2)),
+	)
 	return (Connection)(conn1), (Connection)(conn2)
 }
 
@@ -1537,7 +1599,12 @@ func SendMessages(messages []*Message) []int64 {
 	}
 
 	res := make([]int64, len(messages))
-	C.SteamAPI_ISteamNetworkingSockets_SendMessages(globsock, (C.int)(len(messages)), &messages[0], (*C.int64_t)(&res[0]))
+	C.SteamAPI_ISteamNetworkingSockets_SendMessages(
+		globsock,
+		(C.int)(len(messages)),
+		(**C.SteamNetworkingMessage_t)(unsafe.Pointer(&messages[0])),
+		(*C.int64_t)(&res[0]),
+	)
 	return res
 }
 
@@ -1729,7 +1796,7 @@ func (conn Connection) NewMessage(bufSize int, flags SendFlags) *Message {
 	msg := C.SteamAPI_ISteamNetworkingUtils_AllocateMessage(globutil, (C.int)(bufSize))
 	msg.m_conn = (C.HSteamNetConnection)(conn)
 	msg.m_nFlags = (C.int)(flags)
-	return msg
+	return (*Message)(unsafe.Pointer(msg))
 }
 
 // Flush is the interface to ISteamNetworkingSockets::FlushMessagesOnConnection
@@ -1774,7 +1841,12 @@ func (conn Connection) ReceiveMessages(buf []*Message) int {
 		return 0
 	}
 
-	res := C.SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnConnection(globsock, (C.HSteamNetConnection)(conn), &buf[0], (C.int)(len(buf)))
+	res := C.SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnConnection(
+		globsock,
+		(C.HSteamNetConnection)(conn),
+		(**C.SteamNetworkingMessage_t)(unsafe.Pointer(&buf[0])),
+		(C.int)(len(buf)),
+	)
 	return (int)(res)
 }
 
@@ -1782,7 +1854,11 @@ func (conn Connection) ReceiveMessages(buf []*Message) int {
 //
 // Returns basic information about the high-level state of the connection.
 func (conn Connection) GetInfo(buf *ConnectionInfo) bool {
-	res := C.SteamAPI_ISteamNetworkingSockets_GetConnectionInfo(globsock, (C.HSteamNetConnection)(conn), buf)
+	res := C.SteamAPI_ISteamNetworkingSockets_GetConnectionInfo(
+		globsock,
+		(C.HSteamNetConnection)(conn),
+		(*C.SteamNetConnectionInfo_t)(unsafe.Pointer(buf)),
+	)
 	return (bool)(res)
 }
 
@@ -1900,6 +1976,11 @@ func (poll PollGroup) ReceiveMessages(buf []*Message) int {
 		return 0
 	}
 
-	res := C.SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnPollGroup(globsock, (C.HSteamNetPollGroup)(poll), &buf[0], (C.int)(len(buf)))
+	res := C.SteamAPI_ISteamNetworkingSockets_ReceiveMessagesOnPollGroup(
+		globsock,
+		(C.HSteamNetPollGroup)(poll),
+		(**C.SteamNetworkingMessage_t)(unsafe.Pointer(&buf[0])),
+		(C.int)(len(buf)),
+	)
 	return (int)(res)
 }
